@@ -1,0 +1,191 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  accounts Account[]
+
+  @@index([email])
+  @@map("User")
+}
+
+model Account {
+  id             String   @id @default(cuid())
+  userId         String
+  name           String   @default("Main Account")
+  initialCapital Decimal  @default(5000) @db.Decimal(20, 8)
+  baseCurrency   String   @default("INR")
+  timezone       String   @default("Asia/Kolkata")
+  isOnboarded    Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tradingSettings TradingSettings?
+  trades          Trade[]
+  ledgerEntries   LedgerEntry[]
+  tradingDays     TradingDay[]
+
+  @@index([userId])
+  @@map("Account")
+}
+
+model TradingSettings {
+  id              String   @id @default(cuid())
+  accountId       String   @unique
+  instrument      String   @default("ETHUSD")
+  fxRateUsdToInr  Decimal  @default(83) @db.Decimal(10, 4)
+  makerFeeRate    Decimal  @default(0.0002) @db.Decimal(10, 8)
+  takerFeeRate    Decimal  @default(0.0005) @db.Decimal(10, 8)
+  gstRate         Decimal  @default(0.18) @db.Decimal(10, 8)
+  lotsPerEth      Int      @default(100)
+  defaultLeverage Int      @default(25)
+  dailyTargetRate Decimal  @default(0.04) @db.Decimal(10, 8)
+  timezone        String   @default("Asia/Kolkata")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("TradingSettings")
+}
+
+model Trade {
+  id                 String      @id @default(cuid())
+  accountId          String
+  tradeNumber        Int         @default(autoincrement())
+  instrument         String      @default("ETHUSD")
+  timestamp          DateTime    @default(now()) @map("closedAt")
+  tradingDate        DateTime    @db.Date
+  direction          String
+  entryPriceUsd      Decimal     @map("entryPrice") @db.Decimal(20, 8)
+  exitPriceUsd       Decimal     @map("exitPrice") @db.Decimal(20, 8)
+  lots               Int
+  ethQuantity        Decimal     @db.Decimal(20, 8)
+  leverage           Int         @default(25)
+  entryOrderType     String
+  exitOrderType      String
+  entryNotionalUsd   Decimal     @map("entryNotional") @db.Decimal(20, 8)
+  exitNotionalUsd    Decimal     @map("exitNotional") @db.Decimal(20, 8)
+  grossPnlUsd        Decimal     @map("grossPnl") @db.Decimal(20, 8)
+  entryFeeUsd        Decimal     @map("entryFee") @db.Decimal(20, 8)
+  exitFeeUsd         Decimal     @map("exitFee") @db.Decimal(20, 8)
+  totalFeesUsd       Decimal     @default(0) @db.Decimal(20, 8)
+  gstUsd             Decimal     @map("gst") @db.Decimal(20, 8)
+  fundingType        String      @default("NONE") @map("fundingDirection")
+  fundingAmountUsd   Decimal     @default(0) @map("fundingAmount") @db.Decimal(20, 8)
+  fundingNetUsd      Decimal     @default(0) @db.Decimal(20, 8)
+  netPnlUsd          Decimal     @map("netPnl") @db.Decimal(20, 8)
+  fxRateUsed         Decimal     @default(1) @map("fxRate") @db.Decimal(20, 8)
+  netPnlInr          Decimal     @db.Decimal(20, 8)
+  estimatedMarginInr Decimal     @default(0) @db.Decimal(20, 8)
+  setup              String?
+  emotion            String?
+  mistake            String?     @map("mistakeTag")
+  notes              String?
+  capitalBefore      Decimal?    @db.Decimal(20, 8)
+  capitalAfter       Decimal?    @db.Decimal(20, 8)
+  stopLoss           Decimal?    @db.Decimal(20, 8)
+  takeProfit         Decimal?    @db.Decimal(20, 8)
+  approxMargin       Decimal     @default(0) @db.Decimal(20, 8)
+  screenshotUrl      String?
+  externalTradeId    String?     @unique
+  openedAt           DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  account     Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  feeRecords  FeeRecord[]
+  ledgerEntry LedgerEntry?
+
+  @@index([accountId, tradingDate])
+  @@index([accountId, timestamp], map: "Trade_accountId_closedAt_idx")
+  @@index([accountId])
+  @@index([timestamp], map: "Trade_closedAt_idx")
+  @@index([createdAt])
+  @@index([direction])
+  @@index([instrument])
+  @@index([setup])
+  @@map("Trade")
+}
+
+model FeeRecord {
+  id           String    @id @default(cuid())
+  tradeId      String
+  feeType      String
+  orderType    String    @default("TAKER")
+  rate         Decimal   @db.Decimal(10, 8)
+  notionalUsd  Decimal   @default(0) @db.Decimal(20, 8)
+  feeAmountUsd Decimal   @map("amount") @db.Decimal(20, 8)
+  currency     String    @default("USD")
+  createdAt    DateTime  @default(now())
+
+  trade Trade @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+
+  @@index([tradeId])
+  @@map("FeeRecord")
+}
+
+model LedgerEntry {
+  id          String          @id @default(cuid())
+  accountId   String
+  tradeId     String?         @unique @map("referenceTradeId")
+  type        String
+  amountInr   Decimal         @map("amount") @db.Decimal(20, 8)
+  balanceAfter Decimal        @db.Decimal(20, 8)
+  description String?
+  timestamp   DateTime        @default(now()) @map("createdAt")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  trade   Trade?  @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+
+  @@index([accountId, timestamp], map: "LedgerEntry_accountId_createdAt_idx")
+  @@index([accountId])
+  @@index([timestamp], map: "LedgerEntry_createdAt_idx")
+  @@index([type])
+  @@map("LedgerEntry")
+}
+
+enum TargetStatus {
+  ACHIEVED
+  IN_PROGRESS
+  MISSED
+  NO_TRADES
+}
+
+model TradingDay {
+  id               String       @id @default(cuid())
+  accountId        String
+  date             DateTime     @db.Date
+  beginningCapital Decimal      @map("startingCapital") @db.Decimal(20, 8)
+  targetCapital    Decimal      @db.Decimal(20, 8)
+  targetRate       Decimal      @default(0.04) @db.Decimal(10, 8)
+  targetProfit     Decimal      @db.Decimal(20, 8)
+  actualPnl        Decimal      @default(0) @map("actualNetPnl") @db.Decimal(20, 8)
+  endingCapital    Decimal      @map("closingCapital") @db.Decimal(20, 8)
+  targetDifference Decimal      @default(0) @db.Decimal(20, 8)
+  targetAchieved   Boolean      @default(false)
+  targetStatus     TargetStatus @default(NO_TRADES)
+  tradeCount       Int          @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, date])
+  @@index([accountId, date])
+  @@index([accountId])
+  @@index([date])
+  @@map("TradingDay")
+}
